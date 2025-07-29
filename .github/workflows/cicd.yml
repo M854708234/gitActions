@@ -44,7 +44,6 @@ jobs:
         with:
           name: build-output
           path: dist/
-      - run: ls -al
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
