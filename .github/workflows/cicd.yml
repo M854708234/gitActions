@@ -80,5 +80,5 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          local_dir: dist/
+          local_dir: ./dist/
           remote_dir: /web/dist/
