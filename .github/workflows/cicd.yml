@@ -29,41 +29,19 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Deploy to server via SSH
+        uses: appleboy/scp-deploy-action@v1.0.0
         with:
-          name: build-output
-          path: dist/
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: dist/
-
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            mkdir -p web && cd web
+            # 确保目标目录存在
+            mkdir -p /var/www/web
             # 备份旧版本
-            if [ -d "dist" ]; then
-              mv dist dist_old_$(date +%Y%m%d%H%M%S)
+            if [ -d "/var/www/web/dist" ]; then
+              mv /var/www/web/dist /var/www/web/dist_old_$(date +%Y%m%d%H%M%S)
             fi
-            # 创建新的 dist 目录
-            mkdir -p dist
-          envs:
-            # 传递构建产物路径到 SSH 环境
-            DEPLOY_PATH: ${{ github.workspace }}/dist
-          # 使用 SCP 传输文件到服务器
-          command_timeout: 300s
-          # 传输 dist 目录下的所有文件到服务器的 /var/www/react-app/dist
-          scp: |
-            ${{ github.workspace }}/dist/* root@${{ secrets.SSH_HOST }}:/web/dist
+          source: "dist/"
+          target: "/var/www/web"
+          rm: true # 部署前清空目标目录
