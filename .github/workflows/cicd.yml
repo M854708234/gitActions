@@ -64,4 +64,4 @@ jobs:
             # 创建新的 dist 目录
             mkdir -p dist
           src: ./dist/
-          target: /web/
+          target: /web/dist
