@@ -50,7 +50,7 @@ jobs:
           ls -la ./dist  # 查看下载的文件（调试用）
 
       - name: Deploy to server
-        uses: wlixcc/SFTP-Deploy-Action@v1.3.3
+        uses: wlixcc/SFTP-Deploy-Action@latest
         with:
           username: ${{ secrets.SERVER_USERNAME }}
           server: ${{ secrets.SERVER_HOST }}
