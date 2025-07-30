@@ -63,5 +63,5 @@ jobs:
             fi
             # 创建新的 dist 目录
             mkdir -p dist
-          src: ./src/
+          src: ./src/*
           target: /web
