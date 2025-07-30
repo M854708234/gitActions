@@ -77,4 +77,4 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             echo "远程服务器文件列表:"
-            ls -la /web/dist
+            tree /web/dist || ls -R /web/dist  # 显示目录结构
