@@ -1,5 +1,7 @@
-name: my frist github action workflow
+name: My First GitHub Action Workflow
+
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,6 +31,10 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          ls -la dist  # 查看构建输出（调试用）
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -50,11 +56,29 @@ jobs:
           ls -la ./dist  # 查看下载的文件（调试用）
 
       - name: Deploy to server
-        uses: wlixcc/SFTP-Deploy-Action@latest
+        uses: appleboy/ssh-action@v0.1.10
         with:
+          host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          server: ${{ secrets.SERVER_HOST }}
-          ssh_private_key: ${{ secrets.SERVER_SSH_KEY }}
-          local_path: "./dist/*" # 注意：这里指定dist下的所有文件（不含dist目录本身）
-          remote_path: "/web/dist/" # 远程目标目录
-          args: "-avz --delete" # 同步选项：-a递归，-v详细输出，-z压缩传输，--delete删除远程多余文件
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            echo "Starting deployment..."
+            mkdir -p /web && cd /web
+            # 备份旧版本
+            if [ -d "dist" ]; then
+              echo "Backing up old version..."
+              mv dist dist_old_$(date +%Y%m%d%H%M%S)
+            fi
+            # 创建新的 dist 目录
+            echo "Creating new dist directory..."
+            mkdir -p dist
+            echo "Deployment preparation complete."
+
+      - name: Upload files to remote server via SSH
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          local_dir: dist/
+          remote_dir: /web/dist/
