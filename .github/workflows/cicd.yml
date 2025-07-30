@@ -45,6 +45,10 @@ jobs:
           name: build-output
           path: dist/
 
+      - name: Verify downloaded files
+        run: |
+          ls -la ./dist  # 查看下载的文件（调试用）
+
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
         with:
@@ -59,5 +63,5 @@ jobs:
             fi
             # 创建新的 dist 目录
             mkdir -p dist
-          src: dist/
-          target: /web
+          src: ./dist/
+          target: /web/
