@@ -47,7 +47,7 @@ jobs:
 
       - name: Verify downloaded files
         run: |
-          ls -la ./dist  # 查看下载的文件（调试用）
+          tree ./dist || ls -R ./dist  # 显示目录结构
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
@@ -65,7 +65,9 @@ jobs:
             mkdir -p dist
           src: ./dist/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
           target: /web/dist/ # 确保目标目录以/结尾，表示上传到该目录内
-          overwrite: true # 覆盖现有文件
+          # 其他可选参数
+          overwrite: true # 覆盖远程已有文件
+          debug: true # 调试模式（需要时设为 true，查看详细日志）
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v0.1.10
