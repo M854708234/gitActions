@@ -50,18 +50,11 @@ jobs:
           ls -la ./dist  # 查看下载的文件（调试用）
 
       - name: Deploy to server
-        uses: appleboy/ssh-action@v0.1.10
+        uses: wlixcc/SFTP-Deploy-Action@v1.3.3
         with:
-          host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            mkdir -p web && cd web
-            # 备份旧版本
-            if [ -d "dist" ]; then
-              mv dist dist_old_$(date +%Y%m%d%H%M%S)
-            fi
-            # 创建新的 dist 目录
-            mkdir -p dist
-          src: ./dist/
-          target: /web/dist
+          server: ${{ secrets.SERVER_HOST }}
+          ssh_private_key: ${{ secrets.SERVER_SSH_KEY }}
+          local_path: "./dist/*" # 注意：这里指定dist下的所有文件（不含dist目录本身）
+          remote_path: "/web/dist/" # 远程目标目录
+          args: "-avz --delete" # 同步选项：-a递归，-v详细输出，-z压缩传输，--delete删除远程多余文件
