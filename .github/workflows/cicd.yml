@@ -52,5 +52,18 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /path/to/app
-            cp -r ~/dist/* .
+            mkdir -p web && cd web
+            # 备份旧版本
+            if [ -d "dist" ]; then
+              mv dist dist_old_$(date +%Y%m%d%H%M%S)
+            fi
+            # 创建新的 dist 目录
+            mkdir -p dist
+          envs:
+            # 传递构建产物路径到 SSH 环境
+            DEPLOY_PATH: ${{ github.workspace }}/dist
+          # 使用 SCP 传输文件到服务器
+          command_timeout: 300s
+          # 传输 dist 目录下的所有文件到服务器的 /var/www/react-app/dist
+          scp: |
+            ${{ github.workspace }}/dist/* root@${{ secrets.SSH_HOST }}:/web/dist
