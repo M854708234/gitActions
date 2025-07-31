@@ -15,46 +15,30 @@ jobs:
           echo "测试内容" > ./local/world.txt
           ls -la ./local  # 验证本地文件存在
 
-      - name: 远程部署（带权限修复）
+      - name: 最终部署验证
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          debug: true # 显示详细日志
           script: |
-            # 1. 检查当前用户和目录权限
             echo "当前用户：$(whoami)"
-            echo "目标目录权限："
-            ls -ld /www || echo "目录不存在"
-
-            # 2. 创建目录并授权
-            sudo mkdir -p /www
-            sudo chown -R $(whoami) /www  # 授权给当前登录用户
-            echo "授权后目录权限："
-            ls -ld /www
-
-            # 3. 备份旧文件（可选）
-            if [ -f /www/world.txt ]; then
-              mv /www/world.txt /www/world_backup_$(date +%Y%m%d).txt
-            fi
-          src: "./local/world.txt" # 本地文件路径
-          target: "/www/" # 确保以 / 结尾
+            ls -ld /www  # 确认权限
+          src: "./local/world.txt"
+          target: "/www/"
           overwrite: true
-          recursive: false # 传输单个文件，无需递归
 
-      - name: 验证远程文件
+      - name: 确认文件存在
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            if [ -f /www/world.txt ]; then
-              echo "✅ 文件写入成功"
+            if [ -f "/www/world.txt" ]; then
+              echo "✅ 最终验证：文件写入成功"
               cat /www/world.txt
             else
-              echo "❌ 文件写入失败"
+              echo "❌ 最终验证：文件仍不存在"
               exit 1
             fi
