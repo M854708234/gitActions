@@ -1,0 +1,12 @@
+name: test upload and deploy
+
+on: [push]
+
+jobs:
+  create-file:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Create a file
+        run: echo "This is a test file." > testfile.txt
