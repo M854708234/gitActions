@@ -35,7 +35,7 @@ jobs:
           ls -R path/to/downloaded  # 关键：确认world.txt的位置
 
       - name: Deploy via SFTP（更可靠）
-        uses: wlixcc/SFTP-Deploy-Action@v1.3.3
+        uses: wlixcc/SFTP-Deploy-Action@v1.3.4
         with:
           username: ${{ secrets.SERVER_USERNAME }}
           server: ${{ secrets.SERVER_HOST }}
