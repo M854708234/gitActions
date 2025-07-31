@@ -8,8 +8,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
       - name: Create a file
-        run: echo "This is a test file." > path/to/artifact/world.txt
+        run: |
+          mkdir -p path/to/artifact
+          echo "This is a test file." > path/to/artifact/world.txt
       - name: Upload file
         uses: actions/upload-artifact@v4
         with:
@@ -22,7 +25,7 @@ jobs:
           path: path/to/downloaded
       - name: Verify downloaded file
         run: |
-          if [ -f path/to/downloaded/testfile.txt ]; then
+          if [ -f path/to/downloaded/world.txt ]; then
             echo "File downloaded successfully."
           else
             echo "File download failed."
@@ -37,8 +40,8 @@ jobs:
           script: |
             mkdir -p www && cd www
             # 备份旧版本
-            if [ -d "testfile.txt" ]; then
-              mv testfile.txt testfile_$(date +%Y%m%d%H%M%S).txt
+            if [ -d "world.txt" ]; then
+              mv world.txt world$(date +%Y%m%d%H%M%S).txt
             fi
             echo "Deployment completed successfully."
           src: path/to/downloaded/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
