@@ -32,8 +32,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-output
-          path: ./dist/
+          name: build-output12
+          path: ./upload/
 
   deploy:
     runs-on: ubuntu-latest
@@ -42,12 +42,12 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-output
-          path: ./dist/
+          name: build-output12
+          path: ./download/
 
       - name: Verify downloaded files
         run: |
-          tree ./dist || ls -R ./dist  # 显示目录结构
+          tree ./download || ls -R ./download  # 显示目录结构
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
@@ -63,7 +63,7 @@ jobs:
             fi
             # 创建新的 dist 目录
             mkdir -p dist
-          src: ./dist/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
+          src: ./download/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
           target: /web/dist/ # 确保目标目录以/结尾，表示上传到该目录内
           # 其他可选参数
           overwrite: true # 覆盖远程已有文件
@@ -78,4 +78,4 @@ jobs:
           script: |
             echo "远程服务器文件列表:"
             ls -la /web/dist
-            tree ./dist || ls -R ./dist  # 显示目录结构
+            tree ./web/dist || ls -R ./web/dist  # 显示目录结构
