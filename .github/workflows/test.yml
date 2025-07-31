@@ -1,60 +1,73 @@
-name: test upload and deploy
+name: SCP 传输示例（appleboy/ssh-action）
 
-on: [push]
+on:
+  push:
+    branches: [main]
 
 jobs:
-  create-file:
+  scp-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: Create test file
+      - name: 创建测试文件
         run: |
-          mkdir -p path/to/artifact
-          echo "This is a test file." > path/to/artifact/world.txt
-          ls -la path/to/artifact/  # 确认文件创建
+          mkdir -p ./artifact
+          echo "SCP 传输测试 $(date)" > ./artifact/world.txt
+          ls -la ./artifact  # 验证文件创建
 
-      - name: Upload artifact
+      - name: 上传到 Artifact（可选，多 Job 场景用）
         uses: actions/upload-artifact@v4
         with:
-          name: my-artifact
-          path: path/to/artifact/*
-          if-no-files-found: error
+          name: test-file
+          path: ./artifact/world.txt
 
-      - name: Download artifact
+      - name: 下载 Artifact（可选，多 Job 场景用）
         uses: actions/download-artifact@v4
         with:
-          name: my-artifact
-          path: path/to/downloaded/
-          if-no-artifact-found: error
+          name: test-file
+          path: ./downloaded
 
-      - name: 验证Runner中文件路径
+      - name: 验证下载文件
         run: |
-          echo "下载目录结构："
-          ls -R path/to/downloaded  # 关键：确认world.txt的位置
+          ls -la ./downloaded  # 确保 world.txt 存在
+          cat ./downloaded/world.txt
 
-      - name: Deploy via SFTP（更可靠）
-        uses: wlixcc/SFTP-Deploy-Action@v1.3.4
+      - name: 通过 SCP 传输到远程服务器
+        uses: appleboy/ssh-action@v1
         with:
+          host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          server: ${{ secrets.SERVER_HOST }}
-          ssh_private_key: ${{ secrets.SERVER_SSH_KEY }}
-          local_path: "path/to/downloaded/*" # 匹配Runner中文件路径
-          remote_path: "/www/"
-          args: "-v" # 详细日志
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
 
-      - name: 最终验证远程文件
+          # SCP 核心配置
+          src: "./downloaded/world.txt" # 本地文件路径（Runner 中）
+          target: "/www/" # 远程目标目录（以 / 结尾）
+          overwrite: true # 覆盖现有文件
+          recursive: false # 传输单个文件，无需递归
+
+          # 远程脚本：创建目录 + 备份旧文件
+          script: |
+            mkdir -p /www
+            cd /www
+            if [ -f "world.txt" ]; then
+              mv world.txt "world_backup_$(date +%Y%m%d%H%M%S).txt"
+              echo "已备份旧文件"
+            fi
+
+      - name: 验证远程文件
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "远程/www目录内容："
+            echo "远程 /www 目录内容："
             ls -la /www
             if [ -f "/www/world.txt" ]; then
-              echo "文件存在，内容："
+              echo "文件内容："
               cat /www/world.txt
             else
               echo "文件不存在"
