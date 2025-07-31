@@ -1,0 +1,131 @@
+name: 完整文件部署流程（解决文件不存在问题）
+
+on:
+  push:
+    branches: [main] # 仅在main分支推送时触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # 延长超时时间，便于调试
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # 仅拉取最新代码
+
+      - name: 创建测试文件
+        id: create-file
+        run: |
+          # 创建本地目录和测试文件
+          mkdir -p ${{ github.workspace }}/local
+          echo "测试内容 - $(date)" > ${{ github.workspace }}/local/world.txt
+
+          # 验证文件创建结果
+          echo "本地文件信息："
+          ls -la ${{ github.workspace }}/local/world.txt
+          cat ${{ github.workspace }}/local/world.txt
+
+          # 输出文件绝对路径供后续步骤使用
+          echo "file-path=${{ github.workspace }}/local/world.txt" >> $GITHUB_OUTPUT
+
+      - name: 预配置SSH环境（解决主机密钥问题）
+        run: |
+          # 创建SSH目录并设置权限
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # 添加远程主机密钥到已知列表（避免首次连接验证）
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          # 存储SSH密钥
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # 验证密钥文件
+          echo "SSH密钥配置完成："
+          ls -la ~/.ssh
+
+      - name: 远程服务器环境准备（解决权限问题）
+        run: |
+          # 连接远程服务器执行准备工作
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "
+            # 打印当前用户（确认登录身份）
+            echo '当前登录用户：$(whoami)';
+            
+            # 确保目标目录存在
+            mkdir -p /www;
+            
+            # 检查目录当前权限
+            echo '目录初始权限：';
+            ls -ld /www;
+            
+            # 授权当前用户完全控制目录
+            sudo chown -R $(whoami) /www;
+            chmod 755 /www;  # 确保有写入权限
+            
+            # 验证权限修改结果
+            echo '目录授权后权限：';
+            ls -ld /www;
+            
+            # 测试直接写入权限（关键验证）
+            echo '测试直接创建文件：';
+            if touch /www/test_write_permission.txt; then
+              echo '✅ 直接写入成功';
+              rm /www/test_write_permission.txt;  # 清理测试文件
+            else
+              echo '❌ 直接写入失败（底层权限问题）';
+              exit 1;  # 权限不足时终止流程
+            fi;
+            
+            # 检查磁盘空间（避免磁盘满导致失败）
+            echo '磁盘空间情况：';
+            df -h /www;
+          "
+
+      - name: 通过SCP传输文件（带详细调试）
+        run: |
+          # 显示传输命令和文件信息
+          echo "传输命令：scp -v -i ~/.ssh/deploy_key ${{ steps.create-file.outputs.file-path }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www/"
+          echo "源文件信息："
+          ls -la ${{ steps.create-file.outputs.file-path }}
+
+          # 执行SCP传输（-v显示详细日志）
+          scp -v -i ~/.ssh/deploy_key ${{ steps.create-file.outputs.file-path }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www/
+
+      - name: 传输后立即验证（同一SSH会话）
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "
+            echo '传输后立即检查 /www 目录：';
+            ls -la /www;
+            if [ -f /www/world.txt ]; then
+              echo '✅ 传输后文件存在';
+              cat /www/world.txt;
+            else
+              echo '❌ 传输后文件不存在（传输过程失败）';
+              exit 1;
+            fi
+          "
+
+      - name: 最终验证（独立SSH连接）
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "
+            echo '最终验证 /www 目录：';
+            ls -la /www;
+            if [ -f /www/world.txt ]; then
+              echo '✅ 最终验证：文件存在';
+              cat /www/world.txt;
+            else
+              echo '❌ 最终验证：文件不存在';
+              exit 1;
+            fi
+          "
+
+      - name: 清理敏感信息
+        if: always() # 无论成功失败都执行清理
+        run: |
+          # 删除SSH密钥文件
+          rm -f ~/.ssh/deploy_key
+          echo "敏感信息已清理"
