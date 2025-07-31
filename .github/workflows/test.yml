@@ -1,79 +1,49 @@
-name: SCP 传输调试流程
+name: 修复远程写入问题
 
-on:
-  push:
-    branches: [main]
+on: push
 
 jobs:
-  scp-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      # === 第一步：拉取代码 ===
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      # === 第二步：创建测试文件并验证 ===
       - name: 创建测试文件
         run: |
-          mkdir -p ./artifact
-          echo "SCP 传输测试 $(date)" > ./artifact/world.txt
-          ls -la ./artifact  # 验证文件创建
+          mkdir -p ./local
+          echo "测试内容" > ./local/world.txt
+          ls -la ./local  # 验证本地文件存在
 
-      # === 第三步：上传并下载 Artifact（确保文件路径正确） ===
-      - name: 上传到 Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-file
-          path: ./artifact/world.txt
-
-      - name: 下载 Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: test-file
-          path: ./downloaded
-
-      - name: 验证下载文件
-        run: |
-          ls -la ./downloaded  # 确保 world.txt 存在
-          cat ./downloaded/world.txt  # 输出文件内容
-
-      # === 第四步：SCP 传输 + 远程调试脚本 ===
-      - name: 通过 SCP 传输到远程服务器
+      - name: 远程部署（带权限修复）
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-
-          scp: true
-          src: "./downloaded/world.txt"
-          target: "/www/"
-          overwrite: true
-          recursive: false
-
+          debug: true # 显示详细日志
           script: |
-            # 调试输出
-            echo "当前用户: $(whoami)"
-            echo "远程 /www 权限: $(ls -ld /www)"
-            echo "远程 /www 内容："
-            ls -la /www
+            # 1. 检查当前用户和目录权限
+            echo "当前用户：$(whoami)"
+            echo "目标目录权限："
+            ls -ld /www || echo "目录不存在"
 
-            # 强制写入权限测试
-            touch /www/test_debug.txt
-            if [ $? -eq 0 ]; then
-              echo "✅ 写入权限正常"
-              rm /www/test_debug.txt
-            else
-              echo "❌ 写入权限失败！请检查 /www 权限"
-              exit 1
+            # 2. 创建目录并授权
+            sudo mkdir -p /www
+            sudo chown -R $(whoami) /www  # 授权给当前登录用户
+            echo "授权后目录权限："
+            ls -ld /www
+
+            # 3. 备份旧文件（可选）
+            if [ -f /www/world.txt ]; then
+              mv /www/world.txt /www/world_backup_$(date +%Y%m%d).txt
             fi
+          src: "./local/world.txt" # 本地文件路径
+          target: "/www/" # 确保以 / 结尾
+          overwrite: true
+          recursive: false # 传输单个文件，无需递归
 
-            # 显式覆盖文件（避免备份干扰）
-            cp ./downloaded/world.txt /www/world.txt
-            echo "文件已强制写入 /www/world.txt"
-
-      # === 第五步：最终验证远程文件 ===
       - name: 验证远程文件
         uses: appleboy/ssh-action@v1.0.2
         with:
@@ -81,12 +51,10 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "远程 /www 最终内容："
-            ls -la /www
-            if [ -f "/www/world.txt" ]; then
-              echo "✅ 文件存在，内容为："
+            if [ -f /www/world.txt ]; then
+              echo "✅ 文件写入成功"
               cat /www/world.txt
             else
-              echo "❌ 文件不存在（传输失败）"
+              echo "❌ 文件写入失败"
               exit 1
             fi
