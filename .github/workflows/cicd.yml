@@ -43,11 +43,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-output12
-          path: dist2/
+          path: dist1/
 
       - name: Verify downloaded files
         run: |
-          tree ./dist2 || ls -R ./dist2  # 显示目录结构
+          tree ./dist1 || ls -R ./dist1  # 显示目录结构
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
