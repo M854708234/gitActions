@@ -47,45 +47,31 @@ jobs:
           port: 22
 
           scp: true
-          src: "./downloaded/world.txt" # 本地文件路径
-          target: "/www/" # 远程目标目录（以 / 结尾）
+          src: "./downloaded/world.txt"
+          target: "/www/"
           overwrite: true
           recursive: false
 
           script: |
-            # 调试输出：当前用户、工作目录、远程路径
+            # 调试输出
             echo "当前用户: $(whoami)"
-            echo "当前工作目录: $(pwd)"
-            echo "远程 /www 目录权限: $(ls -ld /www)"
-            echo "远程 /www 当前内容："
+            echo "远程 /www 权限: $(ls -ld /www)"
+            echo "远程 /www 内容："
             ls -la /www
 
-            # 尝试创建测试文件（验证写入权限）
+            # 强制写入权限测试
             touch /www/test_debug.txt
             if [ $? -eq 0 ]; then
-              echo "成功创建 test_debug.txt（权限正常）"
+              echo "✅ 写入权限正常"
               rm /www/test_debug.txt
             else
-              echo "❌ 写入权限失败（请检查用户权限）"
+              echo "❌ 写入权限失败！请检查 /www 权限"
               exit 1
             fi
 
-            # 备份旧文件（调试模式）
-            if [ -f "/www/world.txt" ]; then
-              echo "检测到旧文件，开始备份..."
-              mv /www/world.txt "/www/world_backup_$(date +%Y%m%d%H%M%S).txt"
-              echo "备份完成，新文件: $(ls /www | grep world_backup)"
-            fi
-
-            # 验证 SCP 传输是否成功
-            if [ -f "/www/world.txt" ]; then
-              echo "✅ 文件已成功传输"
-              echo "文件内容："
-              cat /www/world.txt
-            else
-              echo "❌ 文件未传输到远程（检查 SCP 路径或权限）"
-              exit 1
-            fi
+            # 显式覆盖文件（避免备份干扰）
+            cp ./downloaded/world.txt /www/world.txt
+            echo "文件已强制写入 /www/world.txt"
 
       # === 第五步：最终验证远程文件 ===
       - name: 验证远程文件
