@@ -1,4 +1,4 @@
-name: SCP 传输示例（appleboy/ssh-action）
+name: SCP 传输调试流程
 
 on:
   push:
@@ -8,22 +8,25 @@ jobs:
   scp-deploy:
     runs-on: ubuntu-latest
     steps:
+      # === 第一步：拉取代码 ===
       - name: 拉取代码
         uses: actions/checkout@v4
 
+      # === 第二步：创建测试文件并验证 ===
       - name: 创建测试文件
         run: |
           mkdir -p ./artifact
           echo "SCP 传输测试 $(date)" > ./artifact/world.txt
           ls -la ./artifact  # 验证文件创建
 
-      - name: 上传到 Artifact（可选，多 Job 场景用）
+      # === 第三步：上传并下载 Artifact（确保文件路径正确） ===
+      - name: 上传到 Artifact
         uses: actions/upload-artifact@v4
         with:
           name: test-file
           path: ./artifact/world.txt
 
-      - name: 下载 Artifact（可选，多 Job 场景用）
+      - name: 下载 Artifact
         uses: actions/download-artifact@v4
         with:
           name: test-file
@@ -32,8 +35,9 @@ jobs:
       - name: 验证下载文件
         run: |
           ls -la ./downloaded  # 确保 world.txt 存在
-          cat ./downloaded/world.txt
+          cat ./downloaded/world.txt  # 输出文件内容
 
+      # === 第四步：SCP 传输 + 远程调试脚本 ===
       - name: 通过 SCP 传输到远程服务器
         uses: appleboy/ssh-action@v1.0.2
         with:
@@ -42,24 +46,48 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
 
-          # SCP 核心配置
           scp: true
-          src: "./downloaded/world.txt" # 本地文件路径（Runner 中）
+          src: "./downloaded/world.txt" # 本地文件路径
           target: "/www/" # 远程目标目录（以 / 结尾）
-          overwrite: true # 覆盖现有文件
-          recursive: false # 传输单个文件，无需递归
+          overwrite: true
+          recursive: false
 
-          # 远程脚本：创建目录 + 备份旧文件
           script: |
-            mkdir -p /www
-            cd /www
-            if [ -f "world.txt" ]; then
-              mv world.txt "world_backup_$(date +%Y%m%d%H%M%S).txt"
-              echo "已备份旧文件"
-            fi
+            # 调试输出：当前用户、工作目录、远程路径
             echo "当前用户: $(whoami)"
-            echo "目录权限: $(ls -ld /www)"
+            echo "当前工作目录: $(pwd)"
+            echo "远程 /www 目录权限: $(ls -ld /www)"
+            echo "远程 /www 当前内容："
+            ls -la /www
 
+            # 尝试创建测试文件（验证写入权限）
+            touch /www/test_debug.txt
+            if [ $? -eq 0 ]; then
+              echo "成功创建 test_debug.txt（权限正常）"
+              rm /www/test_debug.txt
+            else
+              echo "❌ 写入权限失败（请检查用户权限）"
+              exit 1
+            fi
+
+            # 备份旧文件（调试模式）
+            if [ -f "/www/world.txt" ]; then
+              echo "检测到旧文件，开始备份..."
+              mv /www/world.txt "/www/world_backup_$(date +%Y%m%d%H%M%S).txt"
+              echo "备份完成，新文件: $(ls /www | grep world_backup)"
+            fi
+
+            # 验证 SCP 传输是否成功
+            if [ -f "/www/world.txt" ]; then
+              echo "✅ 文件已成功传输"
+              echo "文件内容："
+              cat /www/world.txt
+            else
+              echo "❌ 文件未传输到远程（检查 SCP 路径或权限）"
+              exit 1
+            fi
+
+      # === 第五步：最终验证远程文件 ===
       - name: 验证远程文件
         uses: appleboy/ssh-action@v1.0.2
         with:
@@ -67,12 +95,12 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "远程 /www 目录内容："
+            echo "远程 /www 最终内容："
             ls -la /www
             if [ -f "/www/world.txt" ]; then
-              echo "文件内容："
+              echo "✅ 文件存在，内容为："
               cat /www/world.txt
             else
-              echo "文件不存在"
+              echo "❌ 文件不存在（传输失败）"
               exit 1
             fi
