@@ -9,20 +9,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Create a file
-        run: echo "This is a test file." > testfile.txt
+        run: echo "This is a test file." > path/to/artifact/world.txt
       - name: Upload file
         uses: actions/upload-artifact@v4
         with:
           name: my-artifact
-          path: path/to/artifact/testfile.txt
+          path: path/to/artifact/*
       - name: Download file
         uses: actions/download-artifact@v4
         with:
           name: my-artifact
-          path: path/to/artifact/
+          path: path/to/downloaded
       - name: Verify downloaded file
         run: |
-          if [ -f path/to/artifact/testfile.txt ]; then
+          if [ -f path/to/downloaded/testfile.txt ]; then
             echo "File downloaded successfully."
           else
             echo "File download failed."
@@ -37,11 +37,11 @@ jobs:
           script: |
             mkdir -p www && cd www
             # 备份旧版本
-            if [ -d "testfile" ]; then
+            if [ -d "testfile.txt" ]; then
               mv testfile.txt testfile_$(date +%Y%m%d%H%M%S).txt
             fi
             echo "Deployment completed successfully."
-          src: path/to/artifact/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
+          src: path/to/downloaded/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
           target: /www/ # 确保目标目录以/结尾，表示上传到该目录内
           # 其他可选参数
           overwrite: true # 覆盖远程已有文件
