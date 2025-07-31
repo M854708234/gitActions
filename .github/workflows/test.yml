@@ -7,45 +7,82 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # 升级到最新版
 
-      - name: Create a file
+      - name: Create a test file
         run: |
+          # 创建目录并生成测试文件
           mkdir -p path/to/artifact
           echo "This is a test file." > path/to/artifact/world.txt
-      - name: Upload file
+          # 验证文件创建成功（本地调试）
+          ls -la path/to/artifact/
+
+      - name: Upload file as artifact
         uses: actions/upload-artifact@v4
         with:
           name: my-artifact
-          path: path/to/artifact/*
-      - name: Download file
+          path: path/to/artifact/* # 上传world.txt
+          if-no-files-found: error # 无文件时直接报错
+
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: my-artifact
-          path: path/to/downloaded
-      - name: Verify downloaded file
+          path: path/to/downloaded/ # 下载到指定目录
+          if-no-artifact-found: error # 无artifact时报错
+
+      - name: Verify downloaded file in Runner
         run: |
-          if [ -f path/to/downloaded/world.txt ]; then
-            echo "File downloaded successfully."
+          # 验证Runner中是否存在下载的文件
+          ls -la path/to/downloaded/
+          if [ -f "path/to/downloaded/world.txt" ]; then
+            echo "File downloaded successfully in Runner."
           else
-            echo "File download failed."
+            echo "File download failed in Runner."
             exit 1
           fi
-      - name: deloy to server
-        uses: appleboy/ssh-action@v0.1.10
+
+      - name: Deploy to remote server
+        uses: appleboy/ssh-action@v1 # 升级到最新版（v1）
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }} # 显式指定端口（默认22）
+
+          # 远程执行脚本：确保目标目录存在并处理备份
+          script: |
+            # 关键：创建绝对路径的/www目录（与target一致）
+            mkdir -p /www
+            cd /www  # 进入目标目录
+            # 备份旧文件（如果存在）
+            if [ -f "world.txt" ]; then
+              mv world.txt world_backup_$(date +%Y%m%d%H%M%S).txt
+            fi
+            echo "Remote directory prepared."
+
+          # 本地要传输的文件：Runner中下载的world.txt
+          src: "path/to/downloaded/*" # 传输下载目录下的所有文件（即world.txt）
+
+          # 远程目标路径：绝对路径/www/（确保以/结尾，表示传输到该目录内）
+          target: "/www/"
+
+          # 传输配置
+          overwrite: true # 覆盖现有文件
+          debug: true # 开启调试日志（便于排查问题）
+
+      - name: Verify file in remote server
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            mkdir -p www && cd www
-            # 备份旧版本
-            if [ -d "world.txt" ]; then
-              mv world.txt world$(date +%Y%m%d%H%M%S).txt
+            # 检查远程/www目录下是否存在world.txt
+            if [ -f "/www/world.txt" ]; then
+              echo "world.txt exists in remote /www directory."
+              cat /www/world.txt  # 输出文件内容验证
+            else
+              echo "world.txt NOT found in remote /www directory."
+              exit 1
             fi
-            echo "Deployment completed successfully."
-          src: path/to/downloaded/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
-          target: /www/ # 确保目标目录以/结尾，表示上传到该目录内
-          # 其他可选参数
-          overwrite: true # 覆盖远程已有文件
-          debug: true # 调试模式（需要时设为 true，查看详细日志）
