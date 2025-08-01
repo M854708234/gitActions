@@ -37,15 +37,16 @@ jobs:
           ls -la ./dist
 
           # 生成唯一标识文件，便于服务器验证
-          echo "部署时间: $(date +%Y%m%d%H%M%S)" > ./web/DEPLOY_INFO.txt
+          mkdir -p ${{ github.workspace }}/local
+          echo "部署时间: $(date +%Y%m%d%H%M%S)" > ${{ github.workspace }}/local/DEPLOY_INFO.txt
 
-          mv ${{ github.workspace }}/dist ${{ github.workspace }}/web # 确保输出目录为web
+          mv ${{ github.workspace }}/dist ${{ github.workspace }}/local # 确保输出目录为web
 
           # 输出构建目录绝对路径
-          echo "dist-path=${{ github.workspace }}/web" >> $GITHUB_OUTPUT
+          echo "dist-path=${{ github.workspace }}/local" >> $GITHUB_OUTPUT
 
-          ls -la ./web # 显示构建产物目录内容
-          echo "构建完成！产物位于：${{ github.workspace }}/web"
+          ls -la ./local # 显示构建产物目录内容
+          echo "构建完成！产物位于：${{ github.workspace }}/local"
 
       - name: 服务器环境准备（权限与目录）
         uses: appleboy/ssh-action@v1.0.2
