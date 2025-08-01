@@ -34,6 +34,7 @@ jobs:
           name: build-output
           path: ${{ github.workspace }}/download/
       - name: Verify downloaded files
+        id: Verify-file
         run: |
           tree ${{ github.workspace }}/download || ls -R ${{ github.workspace }}/download  # 显示目录结构
           echo "upload-path=${{ github.workspace }}/download" >> $GITHUB_OUTPUT
@@ -61,16 +62,16 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            mkdir -p test && cd test
+            mkdir -p test1 && cd test1
             # 备份旧版本
-            if [ -d "test" ]; then
-              mv test test_old_$(date +%Y%m%d%H%M%S)
+            if [ -d "test1" ]; then
+              mv test1 test1_old_$(date +%Y%m%d%H%M%S)
             fi
             # 创建新的 dist 目录
-            mkdir -p test
+            mkdir -p test1
           debug: true
-          src: ${{ steps.create-file.outputs.file-path }}/*
-          target: /www/test
+          src: ${{ steps.create-file.outputs.Verify-file }}/*
+          target: /www/test1
           overwrite: true
       - name: Verify deployment
         uses: appleboy/ssh-action@v0.1.10
