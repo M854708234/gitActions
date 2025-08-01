@@ -32,7 +32,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-output12
+          name: build-output
           path: ./dist/
 
   deploy:
@@ -43,11 +43,30 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-output12
-          path: ./deploy/
+          path: ${{ github.workspace }}/local
 
       - name: Verify downloaded files
         run: |
-          tree ./deploy || ls -R ./deploy  # 显示目录结构
+          tree ${{ github.workspace }}/local || ls -R ${{ github.workspace }}/local  # 显示目录结构
+          echo "file-path=${{ github.workspace }}/local/build-output12" >> $GITHUB_OUTPUT
+
+      - name: 服务器权限与写入测试
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 强制创建目录并授权
+            sudo mkdir -p /www
+            sudo chown -R $(whoami) /www
+            chmod 775 /www  # 放宽权限测试
+
+            # 测试在目标目录创建带唯一标识的文件
+            echo "测试文件唯一标识" > /www/test-pre-deploy.txt
+            echo -e "\n===== 预部署测试文件 ====="
+            ls -la /www/test-pre-deploy.txt || echo "预部署测试文件创建失败"
+            cat /www/test-pre-deploy.txt  # 验证能否在目标目录写入
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v0.1.10
@@ -63,11 +82,10 @@ jobs:
             fi
             # 创建新的 dist 目录
             mkdir -p dist
-          src: ./deploy/* # 注意：添加了/*以指定dist目录的内容，而不是目录本身
-          target: /web/dist/ # 确保目标目录以/结尾，表示上传到该目录内
-          # 其他可选参数
-          overwrite: true # 覆盖远程已有文件
-          debug: true # 调试模式（需要时设为 true，查看详细日志）
+          debug: true
+          src: ${{ steps.create-file.outputs.file-path }}
+          target: /www/dist
+          overwrite: true
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v0.1.10
