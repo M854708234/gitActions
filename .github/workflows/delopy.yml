@@ -1,36 +1,36 @@
-name: 使用appleboy/ssh-action@v1.0.2部署文件
+name: 全链路追踪部署（解决服务器文件缺失）
 
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy-with-appleboy:
+  trace-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: 创建测试文件
+      - name: 创建测试文件（带唯一标识）
         id: create-file
         run: |
-          # 创建本地文件并记录绝对路径
+          # 生成包含唯一时间戳的文件，便于服务器搜索
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
           mkdir -p ${{ github.workspace }}/local
-          echo "测试内容 - $(date)" > ${{ github.workspace }}/local/world.txt
+          echo "唯一标识: $TIMESTAMP" > ${{ github.workspace }}/local/world.txt
 
-          # 验证本地文件
-          echo "本地文件信息："
+          # 本地验证
+          echo "本地文件详情："
           ls -la ${{ github.workspace }}/local/world.txt
           cat ${{ github.workspace }}/local/world.txt
 
-          # 输出文件路径供后续步骤使用
+          # 输出文件路径和唯一标识
           echo "file-path=${{ github.workspace }}/local/world.txt" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
 
-      - name: 预配置SSH环境
+      - name: 1. 验证SSH登录用户与服务器环境
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -38,72 +38,90 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           debug: true
           script: |
-            # 服务器环境检查与准备
-            echo "当前登录用户：$(whoami)"
+            # 确认登录用户（核心！用户错误会导致文件传到其他目录）
+            echo "===== 登录用户信息 ====="
+            whoami
+            echo "用户家目录：$(echo $HOME)"
 
-            # 准备目标目录
-            mkdir -p /www
-            echo "目录初始权限："
-            ls -ld /www
-
-            # 授权目录权限
-            sudo chown -R $(whoami) /www
-            chmod 755 /www
-            echo "授权后目录权限："
-            ls -ld /www
-
-            # 测试直接写入能力
-            echo "测试直接写入："
-            if touch /www/test_permission.txt; then
-              echo "✅ 直接写入成功"
-              rm /www/test_permission.txt
+            # 确认目标目录实际位置（可能存在软链接）
+            echo -e "\n===== 目标目录实际路径 ====="
+            if [ -L "/www" ]; then
+              echo "/www 是软链接，指向：$(readlink -f /www)"
             else
-              echo "❌ 直接写入失败"
-              exit 1
+              echo "/www 实际路径：$(realpath /www)"
             fi
+            ls -ld /www  # 显示目录元数据
 
-            # 检查磁盘空间
-            df -h /www
-
-      - name: 使用SCP传输文件
+      - name: 2. 服务器权限与写入测试
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          debug: true # 显示传输详细日志
-          command_timeout: 30s
+          script: |
+            # 强制创建目录并授权
+            sudo mkdir -p /www
+            sudo chown -R $(whoami) /www
+            chmod 775 /www  # 放宽权限测试
 
-          # SCP传输核心配置
-          src: ${{ steps.create-file.outputs.file-path }} # 本地文件绝对路径
-          target: /www/ # 远程目标目录（必须以/结尾）
+            # 测试在目标目录创建带唯一标识的文件
+            echo "测试文件唯一标识: ${{ steps.create-file.outputs.timestamp }}" > /www/test-pre-deploy.txt
+            echo -e "\n===== 预部署测试文件 ====="
+            ls -la /www/test-pre-deploy.txt || echo "预部署测试文件创建失败"
+            cat /www/test-pre-deploy.txt  # 验证能否在目标目录写入
+
+      - name: 3. 使用SCP传输文件（带追踪）
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          debug: true
+          src: ${{ steps.create-file.outputs.file-path }}
+          target: /www/
           overwrite: true
-          recursive: false # 单个文件传输
-
-          # 传输后立即验证（同一SSH会话）
           script: |
-            echo "传输后立即检查："
-            ls -la /www/world.txt || exit 1
-            echo "传输后文件内容："
-            cat /www/world.txt
+            echo -e "\n===== 传输后立即检查目标目录 ====="
+            ls -la /www/world.txt || echo "目标目录无文件"
 
-      - name: 最终验证（独立会话）
+            # 检查用户家目录（防止路径错误导致文件传到家目录）
+            echo -e "\n===== 检查用户家目录 ====="
+            ls -la ~/world.txt || echo "家目录无文件"
+
+            # 检查系统临时目录（防止传输失败时文件被丢弃）
+            echo -e "\n===== 检查临时目录 ====="
+            ls -la /tmp/world.txt || echo "临时目录无文件"
+
+      - name: 4. 服务器全系统搜索文件
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "最终验证文件存在性："
-            if [ -f /www/world.txt ]; then
-              echo "✅ 远程文件存在"
+            echo -e "\n===== 全系统搜索带唯一标识的文件 ====="
+            # 按内容搜索（使用文件中的唯一时间戳）
+            sudo grep -rnw '/' -e "${{ steps.create-file.outputs.timestamp }}" --include="world.txt" || echo "未找到匹配文件"
+
+            # 按文件名搜索（确认是否存在于其他位置）
+            echo -e "\n===== 全系统搜索world.txt ====="
+            sudo find / -name "world.txt" 2>/dev/null
+
+      - name: 5. 最终验证与问题总结
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            echo -e "\n===== 最终验证总结 ====="
+            if [ -f "/www/world.txt" ]; then
+              echo "✅ 文件存在于目标目录"
               cat /www/world.txt
             else
-              echo "❌ 远程文件不存在"
+              echo "❌ 文件仍缺失，可能原因："
+              echo "1. SCP传输失败（查看传输日志）"
+              echo "2. 文件被自动移动/删除（检查服务器进程）"
+              echo "3. 路径被重定向（如软链接、挂载点）"
               exit 1
             fi
-
-      - name: 清理工作
-        if: always()
-        run: |
-          echo "部署流程结束"
