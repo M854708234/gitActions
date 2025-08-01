@@ -73,6 +73,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/ssh
           echo "${{ secrets.SERVER_SSH_KEY }}" > ${{ github.workspace }}/ssh/id_rsa
           chmod 600 ${{ github.workspace }}/ssh/id_rsa
+          cat ${{ github.workspace }}/ssh/id_rsa
       - name: Copy files to server
         run: |
           scp -i ${{ github.workspace }}/ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
