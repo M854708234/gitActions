@@ -1,0 +1,99 @@
+name: test github actions workflow
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: create file
+        id: create-file
+        run: |
+          # 生成包含唯一时间戳的文件，便于服务器搜索
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          mkdir -p ${{ github.workspace }}/local
+          echo "唯一标识: $TIMESTAMP" > ${{ github.workspace }}/local/world.txt
+
+          # 本地验证
+          echo "本地文件详情："
+          ls -la ${{ github.workspace }}/local/world.txt
+          cat ${{ github.workspace }}/local/world.txt
+
+          # 输出文件路径和唯一标识
+          echo "file-path=${{ github.workspace }}/local/world.txt" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: ${{ steps.create-file.outputs.file-path }}
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: ${{ github.workspace }}/download/
+      - name: Verify downloaded files
+        run: |
+          tree ${{ github.workspace }}/download || ls -R ${{ github.workspace }}/download  # 显示目录结构
+          echo "upload-path=${{ github.workspace }}/download" >> $GITHUB_OUTPUT
+      - name: 服务器权限与写入测试
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 强制创建目录并授权
+            sudo mkdir -p /test
+            sudo chown -R $(whoami) /test
+            chmod 775 /test  # 放宽权限测试
+
+            # 测试在目标目录创建带唯一标识的文件
+            echo "测试文件唯一标识: ${{ steps.create-file.outputs.timestamp }}" > /test/test-pre-deploy.txt
+            echo -e "\n===== 预部署测试文件 ====="
+            ls -la /test/test-pre-deploy.txt || echo "预部署测试文件创建失败"
+            cat /test/test-pre-deploy.txt  # 验证能否在目标目录写入
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            mkdir -p test && cd test
+            # 备份旧版本
+            if [ -d "test" ]; then
+              mv test test_old_$(date +%Y%m%d%H%M%S)
+            fi
+            # 创建新的 dist 目录
+            mkdir -p test
+          debug: true
+          src: ${{ steps.create-file.outputs.file-path }}/*
+          target: /www/test
+          overwrite: true
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            echo "远程服务器文件列表:"
+            ls -la /www/test
+            tree ./www/test || ls -R ./www/test  # 显示目录结构
+            echo "预部署测试文件内容："
+            cat /www/test/test-pre-deploy.txt || echo "预部署测试文件不存在或读取失败"
+            echo "部署验证完成"
+      # - name: Clean up
+      #   run: |
+      #     echo "清理工作目录"
+      #     rm -rf ${{ github.workspace }}/local
+      #     rm -rf ${{ github.workspace }}/download
+      #     echo "清理完成"
+      #     echo "工作目录已清理"
+      #     echo "工作流执行完毕"
+      #     echo "工作流状态：成功"
+      #     echo "工作流结束时间：$(date +'%Y-%m-%d %H:%M:%S')"
+      #     echo "工作流持续时间：$(($(date +%s) - ${{ github.event.workflow_run.created_at }})) 秒"
+      #     echo "工作流日志已保存"
