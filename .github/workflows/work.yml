@@ -84,9 +84,9 @@ jobs:
 
       - name: Copy files to server
         run: |
-          scp -i ${{ github.workspace }}/ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
+          scp -i ~/.ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
 
       - name: Verify deployment
         run: |
-          ssh -i ${{ github.workspace }}/ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "ls -R /www"
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "ls -R /www"
           echo "部署到 /www 完成"
