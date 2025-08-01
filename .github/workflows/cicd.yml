@@ -42,13 +42,13 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-output12
-          path: ${{ github.workspace }}/local
+          name: build-output
+          path: ${{ github.workspace }}/local/
 
       - name: Verify downloaded files
         run: |
           tree ${{ github.workspace }}/local || ls -R ${{ github.workspace }}/local  # 显示目录结构
-          echo "file-path=${{ github.workspace }}/local/build-output12" >> $GITHUB_OUTPUT
+          echo "file-path=${{ github.workspace }}/local" >> $GITHUB_OUTPUT
 
       - name: 服务器权限与写入测试
         uses: appleboy/ssh-action@v1.0.2
@@ -83,7 +83,7 @@ jobs:
             # 创建新的 dist 目录
             mkdir -p dist
           debug: true
-          src: ${{ steps.create-file.outputs.file-path }}
+          src: ${{ steps.create-file.outputs.file-path }}/*
           target: /www/dist
           overwrite: true
 
