@@ -1,0 +1,67 @@
+name: build and deploy
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12"
+      - name: Cache Node.js modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: cache-node-modules-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            cache-node-modules-
+      - name: Install dependencies
+        run: npm ci
+      - name: Run lint
+        run: npm run lint
+      - name: Build project
+        run: npm run build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: ${{ github.workspace }}/dist/
+      - name: Verify local files
+        run: |
+          tree ${{ github.workspace }} || ls -R ${{ github.workspace }}  # 显示目录结构
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: create local directory
+        run: mkdir -p ${{ github.workspace }}/local
+
+      - name: download dist
+        id: create-file
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: ${{ github.workspace }}/local/
+      - name: Verify downloaded files
+        run: |
+          tree ${{ github.workspace }}/local || ls -R ${{ github.workspace }}/local  # 显示目录结构
+          echo "file-path=${{ github.workspace }}/local" >> $GITHUB_OUTPUT
+      - name: 服务器权限与写入测试
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 强制创建目录并授权
+            sudo cd /
+            sudo mkdir -p /www1
+            sudo chown -R $USER:$USER /www1
+            sudo chmod -R 755 /www1
+            echo "目录 /www1 创建并授权成功"
+          debug: true
+          src: ${{ steps.create-file.outputs.file-path }}/*
+          target: /www
+          overwrite: true
