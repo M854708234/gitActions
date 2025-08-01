@@ -71,7 +71,7 @@ jobs:
 
       - name: Copy files to server
         run: |
-          scp -i ${{ secrets.SERVER_SSH_KEY }} -r ${{ github.workspace }}/local/* ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
+          scp -i ${{ secrets.SERVER_SSH_KEY }} -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
 
       - name: Verify deployment
         run: |
