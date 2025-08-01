@@ -68,12 +68,20 @@ jobs:
             else
               echo "目录 /www 已存在"
             fi
-      - name: Write SSH key to file
+      - name: 准备SSH环境
         run: |
-          mkdir -p ${{ github.workspace }}/ssh
-          echo "${{ secrets.SERVER_SSH_KEY }}" > ${{ github.workspace }}/ssh/id_rsa
-          chmod 600 ${{ github.workspace }}/ssh/id_rsa
-          cat ${{ github.workspace }}/ssh/id_rsa
+          # 创建SSH目录并设置权限
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # 写入私钥（从GitHub Secrets获取）
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa  # 必须设置600权限，否则SSH拒绝使用
+
+          # 添加服务器到已知主机（避免首次连接验证）
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
       - name: Copy files to server
         run: |
           scp -i ${{ github.workspace }}/ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
