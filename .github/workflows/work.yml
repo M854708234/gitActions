@@ -80,5 +80,5 @@ jobs:
             echo "目录 /www2 创建并授权成功"
           debug: true
           src: ${{ steps.create-file.outputs.file-path }}/test.yml
-          target: /www2
+          target: /www2/
           overwrite: true
