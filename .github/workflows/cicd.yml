@@ -36,11 +36,16 @@ jobs:
           echo "构建产物目录："
           ls -la ./dist
 
-          # 输出构建目录绝对路径
-          echo "dist-path=${{ github.workspace }}/dist" >> $GITHUB_OUTPUT
-
           # 生成唯一标识文件，便于服务器验证
-          echo "部署时间: $(date +%Y%m%d%H%M%S)" > ./dist/DEPLOY_INFO.txt
+          echo "部署时间: $(date +%Y%m%d%H%M%S)" > ./web/DEPLOY_INFO.txt
+
+          mv ${{ github.workspace }}/dist ${{ github.workspace }}/web # 确保输出目录为web
+
+          # 输出构建目录绝对路径
+          echo "dist-path=${{ github.workspace }}/web" >> $GITHUB_OUTPUT
+
+          ls -la ./web # 显示构建产物目录内容
+          echo "构建完成！产物位于：${{ github.workspace }}/web"
 
       - name: 服务器环境准备（权限与目录）
         uses: appleboy/ssh-action@v1.0.2
@@ -54,23 +59,24 @@ jobs:
             echo "登录用户: $(whoami)"
 
             # 准备目标目录
-            sudo mkdir -p /www
-            sudo chown -R $(whoami) /www  # 授权当前用户
-            chmod 755 /www
-            echo "/www目录权限: $(ls -ld /www)"
+            sudo mkdir -p /www/dist
+            sudo chown -R $(whoami) /www/dist  # 授权当前用户
+            chmod 755 /www/dist
+            echo "/www/dist目录权限: $(ls -ld /www/dist)"
 
             # 备份旧版本（保留最近3个备份）
             echo "备份旧版本..."
-            if [ -d "/www" ]; then
-              BACKUP_DIR="/www_backup_$(date +%Y%m%d%H%M%S)"
-              mv /www $BACKUP_DIR
+            cd /dist
+            if [ -d "/dist" ]; then
+              BACKUP_DIR="/dist_backup_$(date +%Y%m%d%H%M%S)"
+              mv /dist $BACKUP_DIR
               echo "已备份到: $BACKUP_DIR"
               # 清理3天前的备份
-              find / -maxdepth 1 -name "www_backup_*" -type d -mtime +3 -delete
+              find / -maxdepth 1 -name "dist_backup_*" -type d -mtime +3 -delete
             fi
 
             # 重新创建空的目标目录
-            mkdir -p /www
+            # mkdir -p /www/dist
 
       - name: 传输构建产物到服务器
         uses: appleboy/ssh-action@v1.0.2
@@ -96,14 +102,10 @@ jobs:
             ls -la /www
 
             echo -e "\n===== 验证构建产物 ====="
-            if [ -f "/www/index.html" ]; then
+            if [ -f "/www/dist/DEPLOY_INFO.txt" ]; then
               echo "✅ 前端入口文件存在"
-              cat /www/DEPLOY_INFO.txt  # 显示部署信息
+              cat /www/dist/DEPLOY_INFO.txt  # 显示部署信息
             else
               echo "❌ 前端文件部署失败"
               exit 1
             fi
-
-            # 检查文件权限
-            echo -e "\n文件权限检查:"
-            ls -la /www/index.html
