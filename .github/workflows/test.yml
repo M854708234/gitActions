@@ -50,7 +50,15 @@ jobs:
             else
               echo "/www 实际路径：$(realpath /www)"
             fi
-            ls -ld /www  # 显示目录元数据
+
+            if [ -d "/www" ]; then
+              echo "/www 目录存在，权限信息："
+              ls -ld /www
+            else
+              echo "创建目录 /www"
+              sudo mkdir -p /www
+              echo "目录 /www 创建成功"
+            fi
 
       - name: 2. 服务器权限与写入测试
         uses: appleboy/ssh-action@v1.0.2
