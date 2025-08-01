@@ -56,7 +56,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             # 强制创建目录并授权
-            sudo cd /
+            cd /
             sudo mkdir -p /www1
             sudo chown -R $USER:$USER /www1
             sudo chmod -R 755 /www1
