@@ -70,13 +70,14 @@ jobs:
             fi
       - name: Write SSH key to file
         run: |
-          echo "${{ secrets.SERVER_SSH_KEY }}" > $HOME/.ssh/id_rsa
-          chmod 600 $HOME/.ssh/id_rsa
+          mkdir -p ${{ github.workspace }}/ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ${{ github.workspace }}/ssh/id_rsa
+          chmod 600 ${{ github.workspace }}/ssh/id_rsa
       - name: Copy files to server
         run: |
-          scp -i $HOME/.ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
+          scp -i ${{ github.workspace }}/ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
 
       - name: Verify deployment
         run: |
-          ssh -i $HOME/.ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "ls -R /www"
+          ssh -i ${{ github.workspace }}/ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "ls -R /www"
           echo "部署到 /www 完成"
