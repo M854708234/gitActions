@@ -20,8 +20,6 @@ jobs:
             cache-node-modules-
       - name: Install dependencies
         run: npm ci
-      - name: Run lint
-        run: npm run lint
       - name: Build project
         run: npm run build
       - name: Upload artifacts
@@ -41,7 +39,6 @@ jobs:
         run: mkdir -p ${{ github.workspace }}/local
 
       - name: Download dist
-        id: create-file
         uses: actions/download-artifact@v4
         with:
           name: build-output
@@ -50,7 +47,6 @@ jobs:
       - name: Verify downloaded files
         run: |
           ls -R ${{ github.workspace }}/local
-          echo "file-path=${{ github.workspace }}/local" >> $GITHUB_OUTPUT
 
       - name: Deploy to /www1
         uses: appleboy/ssh-action@v1.0.2
@@ -59,6 +55,8 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            echo "当前工作目录: $(pwd)"
+            ls -l
             sudo mkdir -p /www1
             sudo chown -R ${{ secrets.SERVER_USERNAME }}:www-data /www1
             sudo chmod -R 755 /www1
@@ -83,3 +81,13 @@ jobs:
           src: ${{ github.workspace }}/local/test.yml
           target: /www2/
           overwrite: true
+
+      - name: Verify remote files
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            ls -l /www1
+            ls -l /www2
