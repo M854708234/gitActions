@@ -24,7 +24,7 @@ jobs:
         run: ls -R ${{ github.workspace }}/dist
 
       - name: SSH连接+文件传输+远程验证
-        uses: cross-the-world/ssh-scp-ssh-pipelines@1.1.4
+        uses: cross-the-world/ssh-scp-ssh-pipelines@v1.1.4
         with:
           host: ${{ secrets.SERVER_HOST }}
           user: ${{ secrets.SERVER_USERNAME }}
