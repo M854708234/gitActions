@@ -27,6 +27,39 @@ jobs:
           echo "构建产物目录内容："
           ls -la ./dist
 
+      - name: 服务器环境准备（创建目录+备份旧文件）
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_KEY }}
+          port: 22
+          debug: true
+          script: |
+            # 检查并创建/www目录
+            if [ ! -d "/www" ]; then
+              echo "===== /www目录不存在，创建中 ====="
+              sudo mkdir -p /www
+              # 设置目录权限，确保当前用户有读写权限
+              sudo chown -R $USER:$USER /www
+              chmod 755 /www
+            else
+              echo "===== /www目录已存在 ====="
+            fi
+
+            # 检查是否存在旧的dist目录，存在则备份
+            if [ -d "/www/dist" ]; then
+              echo "===== 发现旧dist目录，开始备份 ====="
+              # 创建带时间戳的备份目录（格式：dist_backup_202508041230）
+              BACKUP_DIR="/www/dist_backup_$(date +%Y%m%d%H%M)"
+              mv /www/dist $BACKUP_DIR
+              echo "===== 旧dist目录已备份至：$BACKUP_DIR ====="
+              # 显示备份后的目录结构
+              ls -la /www
+            else
+              echo "===== 无旧dist目录，无需备份 ====="
+            fi
+
       - name: 使用SCP传输文件到服务器
         uses: appleboy/scp-action@v1
         with:
@@ -34,28 +67,30 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASS }}
-          port: 22 # 默认为22，非默认端口需修改
+          port: 22
 
           # 传输配置
-          source: "./dist/*" # 本地源文件/目录（相对于工作目录）
-          target: "/www" # 服务器目标目录
-          overwrite: true # 覆盖已有文件
-          recursive: true # 递归传输目录（含子目录）
+          source: "./dist/*"
+          target: "/www"
+          overwrite: true
+          recursive: true
 
           # 调试与超时设置
-          debug: true # 显示详细传输日志
-          timeout: 60s # 传输超时时间
+          debug: true
+          timeout: 60s
 
       - name: 验证服务器文件
-        uses: appleboy/ssh-action@v1.0.2 # 配合使用SSH Action验证结果
+        uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SERVER_KEY }}
           script: |
             echo "===== 服务器/www目录内容 ====="
             ls -la /www
-            if [ -f "/www/index.html" ]; then
+            echo "===== 服务器/www/dist目录内容 ====="
+            ls -la /www/dist
+            if [ -f "/www/dist/index.html" ]; then
               echo "✅ 传输成功：前端入口文件存在"
             else
               echo "❌ 传输失败：未找到index.html"
