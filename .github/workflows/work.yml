@@ -46,14 +46,14 @@ jobs:
 
       - name: Verify downloaded files
         run: |
-          ls -R ${{ github.workspace }}/local
+          ls -R ${{ github.workspace }}/local  # 确认文件结构，后续scp需对应路径
 
       - name: Verify SSH login user and server environment
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SERVER_SSH_KEY }} # 使用统一的密钥Secret
           debug: true
           script: |
             echo "===== 登录用户信息 ====="
@@ -68,25 +68,37 @@ jobs:
             else
               echo "目录 /www 已存在"
             fi
-      - name: 准备SSH环境
+
+      - name: 准备SSH环境（修正私钥格式）
         run: |
           # 创建SSH目录并设置权限
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          mkdir -p ~/.ssh/
+          chmod 700 ~/.ssh/
 
-          # 写入私钥（从GitHub Secrets获取）
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa  # 必须设置600权限，否则SSH拒绝使用
+          # 使用printf避免额外换行，确保私钥格式完整
+          printf "%s" "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa  # 统一使用SERVER_SSH_KEY
 
-          # 添加服务器到已知主机（避免首次连接验证）
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+          # 严格设置私钥权限（必须为600）
+          chmod 600 ~/.ssh/id_rsa
+
+          # 添加服务器到已知主机，避免验证提示
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Copy files to server
+          # 调试：检查私钥头部是否正确（仅显示前2行，避免泄露密钥）
+          echo "私钥头部验证："
+          head -n 2 ~/.ssh/id_rsa
+
+      - name: Copy files to server（修正文件路径）
         run: |
-          scp -i ~/.ssh/id_rsa -r ${{ github.workspace }}/local/test.yml ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www
+          # 注意：根据前面的ls -R确认实际文件路径，若local下是dist内容，需调整路径
+          # 示例：若local下直接是前端文件（如index.html），传输整个目录
+          scp -i ~/.ssh/id_rsa -r ${{ github.workspace }}/local/* ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }}:/www/
 
       - name: Verify deployment
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "ls -R /www"
-          echo "部署到 /www 完成"
+          ssh -i ~/.ssh/id_rsa ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} "
+            echo '===== /www 目录内容 ====='
+            ls -R /www
+            echo '===== 部署验证完成 ====='
+          "
