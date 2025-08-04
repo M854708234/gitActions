@@ -1,8 +1,10 @@
-name: 构建并部署（使用ssh-scp-ssh-pipelines）
-on: [push]
+name: 构建并通过SCP部署
+on:
+  push:
+    branches: [main]
 
 jobs:
-  build-deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: 拉取代码
@@ -21,42 +23,41 @@ jobs:
         run: npm run build
 
       - name: 验证构建产物
-        run: ls -R ${{ github.workspace }}/dist
+        run: |
+          echo "构建产物目录内容："
+          ls -la ./dist
 
-      - name: SSH连接+文件传输+远程验证
-        uses: cross-the-world/ssh-scp-ssh-pipelines@v1.1.4
+      - name: 使用SCP传输文件到服务器
+        uses: appleboy/scp-action@v1
+        with:
+          # 服务器连接信息
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }} # SSH私钥（无密码保护）
+          port: 22 # 默认为22，非默认端口需修改
+
+          # 传输配置
+          source: "./dist/*" # 本地源文件/目录（相对于工作目录）
+          target: "/www" # 服务器目标目录
+          overwrite: true # 覆盖已有文件
+          recursive: true # 递归传输目录（含子目录）
+
+          # 调试与超时设置
+          debug: true # 显示详细传输日志
+          timeout: 60s # 传输超时时间
+
+      - name: 验证服务器文件
+        uses: appleboy/ssh-action@v1.0.2 # 配合使用SSH Action验证结果
         with:
           host: ${{ secrets.SERVER_HOST }}
-          user: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          # 步骤1: 执行远程服务器初始化命令
-          first_ssh: |
-            echo "===== 登录用户信息 ====="
-            whoami
-            echo "用户家目录: $HOME"
-
-            # 确保目标目录存在并授权
-            if [ ! -d "/www" ]; then
-              sudo mkdir -p /www
-              sudo chown -R $(whoami) /www
-            fi
-            chmod 755 /www
-            echo "===== /www目录权限 ====="
-            ls -ld /www
-          # 步骤2: 传输文件（本地到远程）
-          scp: |
-            ${{ github.workspace }}/dist/* => /www/
-          # 步骤3: 传输后验证
-          last_ssh: |
-            echo "===== 传输后文件列表 ====="
-            ls -R /www
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "===== 服务器/www目录内容 ====="
+            ls -la /www
             if [ -f "/www/index.html" ]; then
-              echo "✅ 部署成功：前端入口文件存在"
+              echo "✅ 传输成功：前端入口文件存在"
             else
-              echo "❌ 部署失败：未找到index.html"
+              echo "❌ 传输失败：未找到index.html"
               exit 1
             fi
-        env:
-          # 启用详细日志模式（调试用）
-          DEBUG: true
