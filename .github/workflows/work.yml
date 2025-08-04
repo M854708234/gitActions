@@ -1,4 +1,4 @@
-name: 构建并通过Docker部署
+name: 构建并通过Docker部署（修复网络问题）
 on:
   push:
     branches: [main]
@@ -16,18 +16,12 @@ jobs:
           node-version: "22.12"
           cache: "npm"
 
-      - name: 安装依赖
-        run: npm ci
-
-      - name: 构建项目
-        run: npm run build
-
-      - name: 验证构建产物
+      - name: 安装依赖与构建
         run: |
-          echo "构建产物目录内容："
-          ls -la ./dist
+          npm ci
+          npm run build
 
-      - name: 服务器环境准备（创建目录+备份旧文件）
+      - name: 服务器环境准备（含Docker优化）
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -36,121 +30,106 @@ jobs:
           port: 22
           debug: true
           script: |
-            # 检查并创建/www目录
+            # 创建目录和备份（保持原有逻辑）
             if [ ! -d "/www" ]; then
-              echo "===== /www目录不存在，创建中 ====="
-              sudo mkdir -p /www
-              sudo chown -R $USER:$USER /www
-              chmod 755 /www
-            else
-              echo "===== /www目录已存在 ====="
+              sudo mkdir -p /www && sudo chown -R $USER:$USER /www && chmod 755 /www
             fi
-
-            # 备份旧dist目录（若存在）
             if [ -d "/www/dist" ]; then
-              echo "===== 发现旧dist目录，开始备份 ====="
               BACKUP_DIR="/www/dist_backup_$(date +%Y%m%d%H%M)"
               mv /www/dist $BACKUP_DIR
-              echo "===== 旧dist目录已备份至：$BACKUP_DIR ====="
-              ls -la /www
-            else
-              echo "===== 无旧dist目录，无需备份 ====="
             fi
 
-            # 检查服务器是否安装Docker和docker-compose
+            # 安装Docker和docker-compose（保持原有逻辑）
             if ! command -v docker &> /dev/null; then
-              echo "===== 安装Docker ====="
-              sudo apt-get update
-              sudo apt-get install -y docker.io
-              sudo systemctl start docker
-              sudo systemctl enable docker
-              sudo usermod -aG docker $USER  # 允许当前用户执行docker命令（无需sudo）
-            else
-              echo "===== Docker已安装 ====="
+              sudo apt-get update && sudo apt-get install -y docker.io
+              sudo systemctl start docker && sudo systemctl enable docker
+              sudo usermod -aG docker $USER
             fi
-
             if ! command -v docker-compose &> /dev/null; then
-              echo "===== 安装docker-compose ====="
               sudo apt-get install -y docker-compose
-            else
-              echo "===== docker-compose已安装 ====="
             fi
 
-      - name: 使用SCP传输前端文件到服务器
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          source: "./dist/*"
-          target: "/www"
-          overwrite: true
-          recursive: true
-          debug: true
-          timeout: 60s
+            # 关键修复1：配置Docker国内镜像源（解决访问限制）
+            echo "===== 配置Docker国内镜像源 ====="
+            sudo mkdir -p /etc/docker
+            # 使用阿里云、网易等国内镜像源加速
+            sudo tee /etc/docker/daemon.json <<-'EOF'
+            {
+              "registry-mirrors": [
+                "https://docker.mirrors.ustc.edu.cn",
+                "https://hub-mirror.c.163.com",
+                "https://reg-mirror.qiniu.com"
+              ]
+            }
+            EOF
+            # 重启Docker使配置生效
+            sudo systemctl daemon-reload
+            sudo systemctl restart docker
 
-      - name: 传输Docker配置文件到服务器
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          # 传输本地的docker-compose.yml和nginx.conf（需在项目根目录准备）
-          source: "docker-compose.yml,nginx.conf"
-          target: "/www"
-          overwrite: true
-          debug: true
-
-      - name: 通过docker-compose启动服务
-        uses: appleboy/ssh-action@v1.0.2
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            # 进入/www目录
-            cd /www || exit 1
-
-            # 停止并移除旧容器（保留数据）
-            if [ "$(docker-compose ps -q)" ]; then
-              echo "===== 停止旧容器 ====="
-              docker-compose down
-            fi
-
-            # 构建并启动新容器
-            echo "===== 启动新容器 ====="
-            docker-compose up -d --build
-
-            # 检查容器状态
-            echo "===== 容器运行状态 ====="
-            docker-compose ps
-
-            # 查看日志（前100行）
-            echo "===== 服务日志 ====="
-            docker-compose logs --tail=100
-
-      - name: 验证Docker部署结果
-        uses: appleboy/ssh-action@v1.0.2
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            # 检查容器是否正常运行
-            if [ "$(docker-compose -f /www/docker-compose.yml ps -q)" ]; then
-              echo "===== 容器运行正常 ====="
+            # 关键修复2：验证镜像源连接
+            echo "===== 测试镜像源连接 ====="
+            if docker info | grep -q "docker.mirrors.ustc.edu.cn"; then
+              echo "✅ 国内镜像源配置成功"
             else
-              echo "===== 容器启动失败 ====="
+              echo "❌ 国内镜像源配置失败"
               exit 1
             fi
 
-            # 检查Nginx是否能正确提供静态文件
-            echo "===== 验证index.html访问 ====="
-            if curl -s --head "http://localhost" | grep "200 OK" > /dev/null; then
-              echo "✅ 部署成功：Nginx可正常访问"
+      - name: 传输前端文件和Docker配置
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          source: "./dist/*,docker-compose.yml,nginx.conf"
+          target: "/www"
+          overwrite: true
+          recursive: true
+
+      - name: 通过docker-compose启动服务（带超时优化）
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /www || exit 1
+            docker-compose down  # 停止旧容器
+
+            # 关键修复3：增加拉取超时时间，重试机制
+            echo "===== 拉取镜像（带超时和重试） ====="
+            for i in {1..3}; do
+              echo "第 $i 次尝试拉取镜像..."
+              if COMPOSE_HTTP_TIMEOUT=300 docker-compose pull; then
+                echo "✅ 镜像拉取成功"
+                break
+              fi
+              if [ $i -eq 3 ]; then
+                echo "❌ 镜像拉取多次失败"
+                exit 1
+              fi
+              echo "等待10秒后重试..."
+              sleep 10
+            done
+
+            # 启动服务
+            docker-compose up -d --build
+
+            # 验证容器状态
+            docker-compose ps
+            docker-compose logs --tail=100
+
+      - name: 验证部署结果
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            if curl -s --connect-timeout 10 --head "http://localhost" | grep "200 OK" > /dev/null; then
+              echo "✅ 部署成功"
             else
-              echo "❌ 部署失败：Nginx无法访问"
+              echo "❌ 部署失败"
               exit 1
             fi
