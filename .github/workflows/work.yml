@@ -68,7 +68,7 @@ jobs:
 
             # 关键修复2：验证镜像源连接
             echo "===== 测试镜像源连接 ====="
-            if docker info | grep -q "docker.mirrors.ustc.edu.cn"; then
+            if docker info | grep -q "https://docker.xuanyuan.me"; then
               echo "✅ 国内镜像源配置成功"
             else
               echo "❌ 国内镜像源配置失败"
