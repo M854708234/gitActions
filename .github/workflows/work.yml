@@ -1,4 +1,4 @@
-name: 构建并通过SCP部署
+name: 构建并通过Docker部署
 on:
   push:
     branches: [main]
@@ -40,60 +40,117 @@ jobs:
             if [ ! -d "/www" ]; then
               echo "===== /www目录不存在，创建中 ====="
               sudo mkdir -p /www
-              # 设置目录权限，确保当前用户有读写权限
               sudo chown -R $USER:$USER /www
               chmod 755 /www
             else
               echo "===== /www目录已存在 ====="
             fi
 
-            # 检查是否存在旧的dist目录，存在则备份
+            # 备份旧dist目录（若存在）
             if [ -d "/www/dist" ]; then
               echo "===== 发现旧dist目录，开始备份 ====="
-              # 创建带时间戳的备份目录（格式：dist_backup_202508041230）
               BACKUP_DIR="/www/dist_backup_$(date +%Y%m%d%H%M)"
               mv /www/dist $BACKUP_DIR
               echo "===== 旧dist目录已备份至：$BACKUP_DIR ====="
-              # 显示备份后的目录结构
               ls -la /www
             else
               echo "===== 无旧dist目录，无需备份 ====="
             fi
 
-      - name: 使用SCP传输文件到服务器
+            # 检查服务器是否安装Docker和docker-compose
+            if ! command -v docker &> /dev/null; then
+              echo "===== 安装Docker ====="
+              sudo apt-get update
+              sudo apt-get install -y docker.io
+              sudo systemctl start docker
+              sudo systemctl enable docker
+              sudo usermod -aG docker $USER  # 允许当前用户执行docker命令（无需sudo）
+            else
+              echo "===== Docker已安装 ====="
+            fi
+
+            if ! command -v docker-compose &> /dev/null; then
+              echo "===== 安装docker-compose ====="
+              sudo apt-get install -y docker-compose
+            else
+              echo "===== docker-compose已安装 ====="
+            fi
+
+      - name: 使用SCP传输前端文件到服务器
         uses: appleboy/scp-action@v1
         with:
-          # 服务器连接信息
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
-          # password: ${{ secrets.SERVER_PASS }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-
-          # 传输配置
           source: "./dist/*"
           target: "/www"
           overwrite: true
           recursive: true
-
-          # 调试与超时设置
           debug: true
           timeout: 60s
 
-      - name: 验证服务器文件
+      - name: 传输Docker配置文件到服务器
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          # 传输本地的docker-compose.yml和nginx.conf（需在项目根目录准备）
+          source: "docker-compose.yml,nginx.conf"
+          target: "/www"
+          overwrite: true
+          debug: true
+
+      - name: 通过docker-compose启动服务
         uses: appleboy/ssh-action@v1.0.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "===== 服务器/www目录内容 ====="
-            ls -la /www
-            echo "===== 服务器/www/dist目录内容 ====="
-            ls -la /www/dist
-            if [ -f "/www/dist/index.html" ]; then
-              echo "✅ 传输成功：前端入口文件存在"
+            # 进入/www目录
+            cd /www || exit 1
+
+            # 停止并移除旧容器（保留数据）
+            if [ "$(docker-compose ps -q)" ]; then
+              echo "===== 停止旧容器 ====="
+              docker-compose down
+            fi
+
+            # 构建并启动新容器
+            echo "===== 启动新容器 ====="
+            docker-compose up -d --build
+
+            # 检查容器状态
+            echo "===== 容器运行状态 ====="
+            docker-compose ps
+
+            # 查看日志（前100行）
+            echo "===== 服务日志 ====="
+            docker-compose logs --tail=100
+
+      - name: 验证Docker部署结果
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 检查容器是否正常运行
+            if [ "$(docker-compose -f /www/docker-compose.yml ps -q)" ]; then
+              echo "===== 容器运行正常 ====="
             else
-              echo "❌ 传输失败：未找到index.html"
+              echo "===== 容器启动失败 ====="
+              exit 1
+            fi
+
+            # 检查Nginx是否能正确提供静态文件
+            echo "===== 验证index.html访问 ====="
+            if curl -s --head "http://localhost" | grep "200 OK" > /dev/null; then
+              echo "✅ 部署成功：Nginx可正常访问"
+            else
+              echo "❌ 部署失败：Nginx无法访问"
               exit 1
             fi
