@@ -1,0 +1,80 @@
+version: "3.8"
+
+services:
+  # MySQL 服务111
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: nestjs_db
+      MYSQL_USER: nestjs_user
+      MYSQL_PASSWORD: nestjs_password
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Redis 服务
+  redis:
+    image: redis:6.2
+    container_name: redis
+    environment:
+      REDIS_PASSWORD: redis_password
+    volumes:
+      - ./redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+  # NestJS 应用（PM2 启动）
+  pm2-nestjs:
+    image: node:18-alpine
+    container_name: pm2-nestjs
+    volumes:
+      - /nest/server/dist:/app/dist # 挂载已打包的 dist 目录
+      - /app/node_modules # 避免挂载覆盖 node_modules
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: nestjs_user
+      DB_PASSWORD: nestjs_password
+      DB_NAME: nestjs_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redis_password
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    command: sh -c "npm install pm2 -g && pm2-runtime dist/main.js"
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - backend
+    restart: always
+
+  # Nginx 服务（反向代理）
+  nginx:
+    image: nginx:1.23
+    container_name: nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80:80"
+    depends_on:
+      - pm2-nestjs
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
